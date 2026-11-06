@@ -9,25 +9,24 @@ FINE_PER_DAY = 0.5  # Change this to your fine rate
 
 st.set_page_config(page_title="Overdue Owl", page_icon="🦉")
 st.title("🦉 Overdue Owl")
-st.write("Upload a CSV to send overdue book reminders.")
+st.write("Upload a CSV or Excel file to send overdue book reminders.")
 
 # UI Layout
 with st.container():
-    csv_file = st.file_uploader(
-        "Upload CSV (columns: name, email, book_title, due_date)", type=["csv"])
-
+    # Added .xlsx support here
+    uploaded_file = st.file_uploader("Upload File (CSV or Excel)", type=["csv", "xlsx"])
+    
     col1, col2 = st.columns(2)
     with col1:
         sender_email = st.text_input("Your Gmail Address")
     with col2:
         sender_password = st.text_input("Gmail App Password", type="password")
-
+        
     col3, col4 = st.columns(2)
     with col3:
         owner_email = st.text_input("Summary Recipient Email (Optional)")
     with col4:
         discord_webhook = st.text_input("Discord Webhook URL (Optional)")
-
 
 def send_email(sender_email, sender_password, to_email, subject, body):
     msg = EmailMessage()
@@ -39,39 +38,40 @@ def send_email(sender_email, sender_password, to_email, subject, body):
         smtp.login(sender_email, sender_password)
         smtp.send_message(msg)
 
-
 if st.button("Send Reminders", type="primary"):
-    if not csv_file:
-        st.error("Please upload a CSV file.")
+    if not uploaded_file:
+        st.error("Please upload a CSV or Excel file.")
     elif not sender_email or not sender_password:
         st.error("Please enter your Gmail and App Password.")
     else:
         try:
-            df = pd.read_csv(csv_file)
+            # Check if it's an Excel file or CSV and read it
+            if uploaded_file.name.endswith('.xlsx'):
+                df = pd.read_excel(uploaded_file)
+            else:
+                df = pd.read_csv(uploaded_file)
+
             required_cols = {"name", "email", "book_title", "due_date"}
             missing = required_cols - set(df.columns)
-
+            
             if missing:
-                st.error(f"CSV is missing columns: {', '.join(missing)}")
+                st.error(f"File is missing columns: {', '.join(missing)}. Please check your header row.")
             else:
                 today = datetime.now().date()
                 summary_lines = []
                 success_count = 0
                 error_lines = []
-
+                
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-
+                
                 for index, row in df.iterrows():
-                    status_text.text(
-                        f"Processing {row.get('name', 'record')}...")
-
+                    status_text.text(f"Processing {row.get('name', 'record')}...")
+                    
                     try:
-                        due = datetime.strptime(
-                            str(row["due_date"]).strip(), "%Y-%m-%d").date()
+                        due = datetime.strptime(str(row["due_date"]).strip(), "%Y-%m-%d").date()
                     except Exception:
-                        error_lines.append(
-                            f"Skipped {row.get('name', '?')}: bad due_date '{row.get('due_date')}'")
+                        error_lines.append(f"Skipped {row.get('name', '?')}: bad due_date format '{row.get('due_date')}' (Use YYYY-MM-DD)")
                         continue
 
                     days_overdue = (today - due).days
@@ -86,7 +86,7 @@ if st.button("Send Reminders", type="primary"):
                         f"Fine so far: {fine:.2f}\n\n"
                         f"Please return it as soon as possible.\n"
                     )
-
+                    
                     try:
                         send_email(
                             sender_email,
@@ -96,46 +96,39 @@ if st.button("Send Reminders", type="primary"):
                             body,
                         )
                         success_count += 1
-                        summary_lines.append(
-                            f"{row['name']} | {row['book_title']} | {days_overdue} days overdue | fine {fine:.2f}")
+                        summary_lines.append(f"{row['name']} | {row['book_title']} | {days_overdue} days overdue | fine {fine:.2f}")
                     except Exception as e:
-                        error_lines.append(
-                            f"Email failed for {row['name']}: {e}")
-
+                        error_lines.append(f"Email failed for {row['name']}: {e}")
+                        
                     progress_bar.progress((index + 1) / len(df))
-
+                
                 status_text.empty()
-
+                
                 if not summary_lines:
                     st.warning("No overdue records found.")
                     if error_lines:
                         st.write("Errors:", error_lines)
                 else:
                     report = "Overdue Summary:\n\n" + "\n".join(summary_lines)
-                    st.success(
-                        f"Sent {success_count} reminder(s) successfully!")
-
-                    # Send to Owner
+                    st.success(f"Sent {success_count} reminder(s) successfully!")
+                    
                     if owner_email:
                         try:
-                            send_email(sender_email, sender_password,
-                                       owner_email, "Library Overdue Summary", report)
+                            send_email(sender_email, sender_password, owner_email, "Library Overdue Summary", report)
                             st.info("Summary emailed to owner.")
                         except Exception as e:
                             st.warning(f"Owner email failed: {e}")
 
-                    # Send to Discord
                     if discord_webhook:
                         try:
-                            requests.post(discord_webhook, json={
-                                          "content": report[:1900]}, timeout=10)
+                            requests.post(discord_webhook, json={"content": report[:1900]}, timeout=10)
                             st.info("Summary sent to Discord.")
                         except Exception as e:
                             st.warning(f"Discord failed: {e}")
-
+                            
                     with st.expander("View Summary Details"):
                         st.text(report)
-
+                        
                     if error_lines:
                         with st.expander("View Errors"):
                             for err in error_lines:
