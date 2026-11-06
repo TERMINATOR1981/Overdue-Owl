@@ -4,8 +4,7 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 import requests
-
-FINE_PER_DAY = 0.5  # Change this to your fine rate
+import io
 
 st.set_page_config(page_title="Overdue Owl", page_icon="🦉")
 st.title("🦉 Overdue Owl")
@@ -27,12 +26,23 @@ with st.container():
     with col4:
         discord_webhook = st.text_input("Discord Webhook URL (Optional)")
 
-def send_email(sender_email, sender_password, to_email, subject, body):
+    col5, col6 = st.columns(2)
+    with col5:
+        fine_rate = st.number_input("Fine per day", value=0.50, step=1.0, min_value=0.0)
+    with col6:
+        currency = st.text_input("Currency Symbol", value="PKR")
+
+def send_email(sender_email, sender_password, to_email, subject, body, attachment_data=None, attachment_name=None):
     msg = EmailMessage()
     msg.set_content(body)
     msg["Subject"] = subject
     msg["From"] = sender_email
     msg["To"] = to_email
+    
+    # Attach the summary file if provided
+    if attachment_data and attachment_name:
+        msg.add_attachment(attachment_data, maintype="text", subtype="plain", filename=attachment_name)
+        
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(sender_email, sender_password)
         smtp.send_message(msg)
@@ -59,6 +69,7 @@ if st.button("Send Reminders", type="primary"):
                 summary_lines = []
                 success_count = 0
                 error_lines = []
+                total_fine = 0.0
                 
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -66,25 +77,25 @@ if st.button("Send Reminders", type="primary"):
                 for index, row in df.iterrows():
                     status_text.text(f"Processing {row.get('name', 'record')}...")
                     
-                    # IMPROVED DATE PARSING: Handles both YYYY-MM-DD and YYYY-MM-DD 00:00:00
                     try:
-                        # Convert to string, split by space to drop the time, and take the first part
                         raw_date = str(row["due_date"]).strip().split(' ')[0]
                         due = datetime.strptime(raw_date, "%Y-%m-%d").date()
                     except Exception:
-                        error_lines.append(f"Skipped {row.get('name', '?')}: bad due_date format '{row.get('due_date')}' (Use YYYY-MM-DD)")
+                        error_lines.append(f"Skipped {row.get('name', '?')}: bad due_date format '{row.get('due_date')}'")
                         continue
 
                     days_overdue = (today - due).days
                     if days_overdue <= 0:
                         continue
 
-                    fine = days_overdue * FINE_PER_DAY
+                    fine = days_overdue * fine_rate
+                    total_fine += fine
+                    
                     body = (
                         f"Hello {row['name']},\n\n"
                         f'You have not yet returned "{row["book_title"]}".\n\n'
                         f"Days overdue: {days_overdue}\n"
-                        f"Fine so far: {fine:.2f}\n\n"
+                        f"Fine so far: {currency} {fine:.2f}\n\n"
                         f"Please return it as soon as possible.\n"
                     )
                     
@@ -97,7 +108,7 @@ if st.button("Send Reminders", type="primary"):
                             body,
                         )
                         success_count += 1
-                        summary_lines.append(f"{row['name']} | {row['book_title']} | {days_overdue} days overdue | fine {fine:.2f}")
+                        summary_lines.append(f"{row['name']} | {row['book_title']} | {days_overdue} days overdue | Fine: {currency} {fine:.2f}")
                     except Exception as e:
                         error_lines.append(f"Email failed for {row['name']}: {e}")
                         
@@ -110,22 +121,37 @@ if st.button("Send Reminders", type="primary"):
                     if error_lines:
                         st.write("Errors:", error_lines)
                 else:
+                    # Create the full report text
                     report = "Overdue Summary:\n\n" + "\n".join(summary_lines)
+                    report += f"\n\n==============================\nTOTAL FINE COLLECTED: {currency} {total_fine:.2f}\n=============================="
+                    
                     st.success(f"Sent {success_count} reminder(s) successfully!")
                     
+                    # Owner Email
                     if owner_email:
                         try:
-                            send_email(sender_email, sender_password, owner_email, "Library Overdue Summary", report)
+                            # Convert string to bytes for email attachment
+                            file_bytes = report.encode('utf-8')
+                            send_email(sender_email, sender_password, owner_email, "Library Overdue Summary", report, file_bytes, "overdue_summary.txt")
                             st.info("Summary emailed to owner.")
                         except Exception as e:
                             st.warning(f"Owner email failed: {e}")
 
+                    # Discord Webhook
                     if discord_webhook:
                         try:
                             requests.post(discord_webhook, json={"content": report[:1900]}, timeout=10)
                             st.info("Summary sent to Discord.")
                         except Exception as e:
                             st.warning(f"Discord failed: {e}")
+                            
+                    # Download Button on the App
+                    st.download_button(
+                        label="📥 Download Summary Report",
+                        data=report,
+                        file_name="overdue_summary.txt",
+                        mime="text/plain"
+                    )
                             
                     with st.expander("View Summary Details"):
                         st.text(report)
