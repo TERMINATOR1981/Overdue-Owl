@@ -13,7 +13,6 @@ st.write("Upload a CSV or Excel file to send overdue book reminders.")
 
 # UI Layout
 with st.container():
-    # Added .xlsx support here
     uploaded_file = st.file_uploader("Upload File (CSV or Excel)", type=["csv", "xlsx"])
     
     col1, col2 = st.columns(2)
@@ -45,7 +44,6 @@ if st.button("Send Reminders", type="primary"):
         st.error("Please enter your Gmail and App Password.")
     else:
         try:
-            # Check if it's an Excel file or CSV and read it
             if uploaded_file.name.endswith('.xlsx'):
                 df = pd.read_excel(uploaded_file)
             else:
@@ -68,8 +66,11 @@ if st.button("Send Reminders", type="primary"):
                 for index, row in df.iterrows():
                     status_text.text(f"Processing {row.get('name', 'record')}...")
                     
+                    # IMPROVED DATE PARSING: Handles both YYYY-MM-DD and YYYY-MM-DD 00:00:00
                     try:
-                        due = datetime.strptime(str(row["due_date"]).strip(), "%Y-%m-%d").date()
+                        # Convert to string, split by space to drop the time, and take the first part
+                        raw_date = str(row["due_date"]).strip().split(' ')[0]
+                        due = datetime.strptime(raw_date, "%Y-%m-%d").date()
                     except Exception:
                         error_lines.append(f"Skipped {row.get('name', '?')}: bad due_date format '{row.get('due_date')}' (Use YYYY-MM-DD)")
                         continue
