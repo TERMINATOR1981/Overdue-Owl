@@ -5,32 +5,70 @@ from email.message import EmailMessage
 from datetime import datetime
 import requests
 
-st.set_page_config(page_title="Overdue Owl", page_icon="🦉", layout="wide")
+st.set_page_config(page_title="Overdue Owl", page_icon="🦉", layout="centered")
 
-# This forces the sidebar to be open by default so it's not hidden
-st.markdown(
-    """
-    <style>
-        [data-testid="collapsedControl"] {
-            display: none;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# --- STATE MANAGEMENT FOR PAGES ---
+if "show_help" not in st.session_state:
+    st.session_state.show_help = False
 
-st.title("🦉 Overdue Owl")
+# --- TOP HEADER WITH BUTTONS ---
+col_title, col_btn = st.columns([3, 1])
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.header("Menu")
-    # This radio button makes it very clear how to switch pages
-    page = st.radio("Choose a page:", ["📧 Send Reminders", "❓ How to Use"])
+with col_title:
+    st.title("🦉 Overdue Owl")
+
+with col_btn:
+    st.write("") # Spacer to push button down
+    if st.session_state.show_help:
+        if st.button("⬅️ Back to App", use_container_width=True):
+            st.session_state.show_help = False
+            st.rerun()
+    else:
+        if st.button("❓ How to Use", use_container_width=True):
+            st.session_state.show_help = True
+            st.rerun()
+
+st.divider()
+
+# ==========================================
+# PAGE 1: HELP / INSTRUCTIONS
+# ==========================================
+if st.session_state.show_help:
+    st.header("📖 How to Use Overdue Owl")
+    st.write("This tool helps you automatically send overdue book reminders to borrowers and a summary to the library owner.")
+    
+    st.subheader("1. Get Your Gmail App Password")
+    st.write("Because normal passwords don't work for security reasons, you must generate an App Password:")
+    st.markdown("""
+    1. Go to your **Google Account Security** settings.
+    2. Make sure **2-Step Verification** is turned ON.
+    3. Search for **App Passwords** in the settings search bar (or go to `myaccount.google.com/apppasswords`).
+    4. Type a name (like "Overdue Owl") and click **Create**.
+    5. Copy the **16-letter code** that pops up (you will paste this into the app).
+    """)
+    
     st.divider()
-    st.info("Need help? Click 'How to Use' to read the instructions.")
+    st.subheader("2. Prepare Your Excel or CSV File")
+    st.write("Your file must have exactly these 4 column headers in the first row:")
+    st.code("name, email, book_title, due_date", language="text")
+    st.write("*Note: The `due_date` must be in the format `YYYY-MM-DD` (e.g., 2026-10-14).*")
+    
+    st.divider()
+    st.subheader("3. What Each Option Does")
+    st.markdown("""
+    * **Upload File:** Choose your `.xlsx` or `.csv` file from your computer.
+    * **Your Gmail Address:** The email account that will send the reminders.
+    * **Gmail App Password:** The 16-letter code you generated in Step 1.
+    * **Summary Recipient Email:** (Optional) Where you want a master list of all overdue books and total fines sent to. If left blank, it won't send an email.
+    * **Discord Webhook URL:** (Optional) If you want the summary posted in a Discord channel.
+    * **Fine per day:** How much money is charged for each day the book is late.
+    * **Currency Symbol:** Changes the text in the email (e.g., "PKR", "$", "Rs").
+    """)
 
-# --- PAGE 1: MAIN APP ---
-if page == "📧 Send Reminders":
+# ==========================================
+# PAGE 2: THE MAIN APP
+# ==========================================
+else:
     st.write("Upload a CSV or Excel file to send overdue book reminders.")
     
     with st.container():
@@ -180,37 +218,3 @@ if page == "📧 Send Reminders":
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
-
-# --- PAGE 2: HOW TO USE ---
-elif page == "❓ How to Use":
-    st.header("📖 How to Use Overdue Owl")
-    st.write("This tool helps you automatically send overdue book reminders to borrowers and a summary to the library owner.")
-    st.divider()
-    
-    st.subheader("1. Get Your Gmail App Password")
-    st.write("Because normal passwords don't work for security reasons, you must generate an App Password:")
-    st.markdown("""
-    1. Go to your **Google Account Security** settings.
-    2. Make sure **2-Step Verification** is turned ON.
-    3. Search for **App Passwords** in the settings search bar (or go to `myaccount.google.com/apppasswords`).
-    4. Type a name (like "Overdue Owl") and click **Create**.
-    5. Copy the **16-letter code** that pops up (you will paste this into the app).
-    """)
-    
-    st.divider()
-    st.subheader("2. Prepare Your Excel or CSV File")
-    st.write("Your file must have exactly these 4 column headers in the first row:")
-    st.code("name, email, book_title, due_date", language="text")
-    st.write("*Note: The `due_date` must be in the format `YYYY-MM-DD` (e.g., 2026-10-14).*")
-    
-    st.divider()
-    st.subheader("3. What Each Option Does")
-    st.markdown("""
-    * **Upload File:** Choose your `.xlsx` or `.csv` file from your computer.
-    * **Your Gmail Address:** The email account that will send the reminders.
-    * **Gmail App Password:** The 16-letter code you generated in Step 1.
-    * **Summary Recipient Email:** (Optional) Where you want a master list of all overdue books and total fines sent to. If left blank, it won't send an email.
-    * **Discord Webhook URL:** (Optional) If you want the summary posted in a Discord channel.
-    * **Fine per day:** How much money is charged for each day the book is late.
-    * **Currency Symbol:** Changes the text in the email (e.g., "PKR", "$", "Rs").
-    """)
