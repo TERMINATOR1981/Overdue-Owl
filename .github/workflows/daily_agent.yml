@@ -2,7 +2,7 @@ name: Daily Library Reminder Agent
 
 on:
   schedule:
-    - cron: '0 11 * * *' # Runs automatically at 11:00 AM UTC (4:00 PM PKT)
+    - cron: '0 19 * * *' # Runs automatically at 11:00 AM UTC (4:00 PM PKT)
   workflow_dispatch:
     inputs:
       fine_rate:
