@@ -5,17 +5,16 @@ from email.message import EmailMessage
 from datetime import datetime
 from supabase import create_client, Client
 
-# --- CONFIGURATION ---
-FINE_RATE = 50.0  # Change this to your fine rate (e.g., 50 PKR)
-CURRENCY = "PKR"
-
-# --- SECRETS (Pulled securely from GitHub Secrets) ---
+# --- SECRETS & INPUTS ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 GMAIL_USER = os.environ.get("GMAIL_USER")
 GMAIL_PASS = os.environ.get("GMAIL_PASS")
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL")
-DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK")
+
+# Pull Fine Rate and Currency dynamically from the workflow (or default to 50 / PKR)
+FINE_RATE = float(os.environ.get("FINE_RATE", 50.0))
+CURRENCY = os.environ.get("CURRENCY", "PKR")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -30,9 +29,8 @@ def send_email(to_email, subject, body):
         smtp.send_message(msg)
 
 def run_agent():
-    print("Agent starting...")
+    print(f"Agent starting with Fine Rate: {FINE_RATE} {CURRENCY}...")
     
-    # 1. Fetch data from Supabase where 'returned' is False
     response = supabase.table('library_loans').select("*").eq('returned', False).execute()
     loans = response.data
     
@@ -40,7 +38,6 @@ def run_agent():
     summary_lines = []
     total_fine = 0.0
     
-    # 2. Process each record
     for loan in loans:
         try:
             due = datetime.strptime(str(loan['due_date']).split('T')[0], "%Y-%m-%d").date()
@@ -50,12 +47,11 @@ def run_agent():
             
         days_overdue = (today - due).days
         if days_overdue <= 0:
-            continue # Not overdue yet
+            continue
             
         fine = days_overdue * FINE_RATE
         total_fine += fine
         
-        # Send email to borrower
         body = (
             f"Hello {loan['name']},\n\n"
             f'Our records show you have not returned "{loan["book_title"]}".\n\n'
@@ -71,7 +67,6 @@ def run_agent():
         except Exception as e:
             print(f"Failed to email {loan['name']}: {e}")
 
-    # 3. Send Summary to Owner
     if not summary_lines:
         print("No overdue books today.")
         return
@@ -85,14 +80,6 @@ def run_agent():
             print("Summary emailed to owner.")
         except Exception as e:
             print(f"Owner email failed: {e}")
-
-    # 4. Send Summary to Discord (Will skip if you didn't add the secret)
-    if DISCORD_WEBHOOK:
-        try:
-            requests.post(DISCORD_WEBHOOK, json={"content": report[:1900]}, timeout=10)
-            print("Summary sent to Discord.")
-        except Exception as e:
-            print(f"Discord failed: {e}")
 
 if __name__ == "__main__":
     run_agent()
