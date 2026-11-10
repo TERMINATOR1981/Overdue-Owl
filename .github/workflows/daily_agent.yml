@@ -1,0 +1,32 @@
+name: Daily Library Reminder Agent
+
+on:
+  schedule:
+    # Runs automatically at 11:00 AM UTC (which is 4:00 PM Pakistan Time)
+    - cron: '0 11 * * *' 
+  workflow_dispatch: # Allows you to force run it manually or via Streamlit
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Automation Agent
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python agent.py
