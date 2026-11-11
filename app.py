@@ -35,20 +35,17 @@ st.divider()
 if st.session_state.show_help:
     st.header("📖 How to Use the Command Center")
     
-    st.subheader("1. Settings")
-    st.write("Adjust the **Fine per day** and **Currency Symbol** at the top of the dashboard. These exact values will be used to calculate the fines in the preview and will be sent to the background bot when you trigger it.")
-    
-    st.subheader("2. Upload Data")
+    st.subheader("1. Upload Data")
     st.write("Prepare an Excel or CSV file with exactly these 4 headers: `name`, `email`, `book_title`, `due_date`. (Format for date: `YYYY-MM-DD`). Upload it and click **Upload to Supabase** to save it to your cloud database.")
     
-    st.subheader("3. Live Preview")
-    st.write("The dashboard will automatically calculate and show you a table of all overdue books and the total fine to be collected based on the settings you chose.")
+    st.subheader("2. Live Preview")
+    st.write("The dashboard will automatically calculate and show you a table of all overdue books and the total fine to be collected. (The fine rate is fixed at 50 PKR/day in the background).")
     
-    st.subheader("4. Trigger the Bot")
+    st.subheader("3. Trigger the Bot")
     st.write("Click **🚀 Force Run Agent Now**. This tells GitHub to instantly wake up, read your database, email the borrowers, and send you the summary email.")
     
-    st.subheader("5. Automation")
-    st.write("Even if you don't click the button, the GitHub bot is scheduled to run automatically every day at 4:00 PM. It will use the default rate (50 PKR) unless you use the Force Run button.")
+    st.subheader("4. Automation")
+    st.write("Even if you don't click the button, the GitHub bot is scheduled to run automatically every day at 12:20 AM. It will send the emails using the fixed rate.")
 
 # ==========================================
 # PAGE 2: THE MAIN DASHBOARD
@@ -63,17 +60,11 @@ else:
         st.error("Missing Supabase Secrets. Please add SUPABASE_URL and SUPABASE_KEY to Streamlit Secrets.")
         st.stop()
 
-    # --- SETTINGS ON MAIN PAGE ---
-    st.subheader("⚙️ Settings")
-    col_rate, col_currency = st.columns(2)
-    with col_rate:
-        fine_rate = st.number_input("Fine per day", value=50.0, step=10.0, min_value=0.0)
-    with col_currency:
-        currency = st.text_input("Currency Symbol", value="PKR")
-
+    # We hardcode these in the dashboard just for the preview table, 
+    # but make sure they match the ones in agent.py!
+    FINE_RATE = 50.0
+    CURRENCY = "PKR"
     today = datetime.now().date()
-
-    st.divider()
 
     # --- UPLOAD & TRIGGER SECTION ---
     st.subheader("🚀 Action Panel")
@@ -116,19 +107,9 @@ else:
             else:
                 url = f"https://api.github.com/repos/{GH_USERNAME}/{GH_REPO}/actions/workflows/daily_agent.yml/dispatches"
                 headers = {"Accept": "application/vnd.github.v3+json", "Authorization": f"token {gh_pat}"}
-                
-                # This sends your dashboard values to GitHub!
-                data = {
-                    "ref": "main",
-                    "inputs": {
-                        "fine_rate": str(fine_rate),
-                        "currency": currency
-                    }
-                }
-                
-                response = requests.post(url, headers=headers, json=data)
+                response = requests.post(url, headers=headers, json={"ref": "main"})
                 if response.status_code == 204:
-                    st.success(f"Agent triggered at {currency} {fine_rate}/day! Emails are being sent.")
+                    st.success("Agent triggered! Emails are being sent in the background.")
                 else:
                     st.error(f"Failed to trigger: {response.text}")
 
@@ -152,14 +133,14 @@ else:
                     due = datetime.strptime(str(row['due_date']).split('T')[0], "%Y-%m-%d").date()
                     days_overdue = (today - due).days
                     if days_overdue > 0:
-                        fine = days_overdue * fine_rate
+                        fine = days_overdue * FINE_RATE
                         total_fine += fine
                         calculated_data.append({
                             "Name": row['name'],
                             "Book": row['book_title'],
                             "Due Date": row['due_date'],
                             "Days Overdue": days_overdue,
-                            "Fine": f"{currency} {fine:.2f}"
+                            "Fine": f"{CURRENCY} {fine:.2f}"
                         })
                 except Exception:
                     continue
@@ -167,7 +148,7 @@ else:
             if calculated_data:
                 preview_df = pd.DataFrame(calculated_data)
                 st.dataframe(preview_df, use_container_width=True)
-                st.markdown(f"### **Total Fine to be Collected: {currency} {total_fine:.2f}**")
+                st.markdown(f"### **Total Fine to be Collected: {CURRENCY} {total_fine:.2f}**")
             else:
                 st.info("No overdue books right now (or all books are returned!).")
                 
