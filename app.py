@@ -45,7 +45,7 @@ if st.session_state.show_help:
     st.write("Click **🚀 Force Run Agent Now**. This tells GitHub to instantly wake up, read your database, email the borrowers, and send you the summary email.")
     
     st.subheader("4. Automation")
-    st.write("Even if you don't click the button, the GitHub bot is scheduled to run automatically every day at 12:20 AM. It will send the emails using the fixed rate.")
+    st.write("Even if you don't click the button, the GitHub bot is scheduled to run automatically every day at 4:00 PM. It will send the emails using the fixed rate.")
 
 # ==========================================
 # PAGE 2: THE MAIN DASHBOARD
@@ -86,7 +86,13 @@ else:
                     df['returned'] = False
                     
                     records = df.to_dict(orient='records')
-                    supabase.table('library_loans').insert(records).execute()
+                    
+                    # UPSERT: Updates existing rows or inserts new ones
+                    supabase.table('library_loans').upsert(
+                        records, 
+                        on_conflict="email,book_title,due_date"
+                    ).execute()
+                    
                     st.success(f"Successfully uploaded {len(records)} records to Supabase!")
                     st.rerun() # Refresh the table below
                 except Exception as e:
