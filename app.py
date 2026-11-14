@@ -36,16 +36,18 @@ if st.session_state.show_help:
     st.header("📖 How to Use the Command Center")
     
     st.subheader("1. Upload Data")
-    st.write("Prepare an Excel or CSV file with exactly these 4 headers: `name`, `email`, `book_title`, `due_date`. (Format for date: `YYYY-MM-DD`). Upload it and click **Upload to Supabase** to save it to your cloud database.")
+    st.write("Prepare an Excel or CSV file with exactly these 4 headers: `name`, `email`, `book_title`, `due_date`. (Format for date: `YYYY-MM-DD`). Upload it and click **Upload to Supabase**.")
     
-    st.subheader("2. Live Preview")
-    st.write("The dashboard will automatically calculate and show you a table of all overdue books and the total fine to be collected. (The fine rate is fixed at 50 PKR/day in the background).")
+    st.info("**Overwriting vs Updating:** If you check the **⚠️ Delete ALL old data** box, it will wipe the database clean before adding your new file. If you leave it unchecked, it will just add new books and update existing ones.")
+    
+    st.subheader("2. Returned Books")
+    st.write("When a student returns a book, simply go into your **Supabase Dashboard**, find their row, and check the **`returned`** box. The system will automatically stop emailing them and remove them from the fine list.")
     
     st.subheader("3. Trigger the Bot")
     st.write("Click **🚀 Force Run Agent Now**. This tells GitHub to instantly wake up, read your database, email the borrowers, and send you the summary email.")
     
     st.subheader("4. Automation")
-    st.write("Even if you don't click the button, the GitHub bot is scheduled to run automatically every day at 4:00 PM. It will send the emails using the fixed rate.")
+    st.write("Even if you don't click the button, the GitHub bot is scheduled to run automatically every day at 4:00 PM.")
 
 # ==========================================
 # PAGE 2: THE MAIN DASHBOARD
@@ -60,8 +62,6 @@ else:
         st.error("Missing Supabase Secrets. Please add SUPABASE_URL and SUPABASE_KEY to Streamlit Secrets.")
         st.stop()
 
-    # We hardcode these in the dashboard just for the preview table, 
-    # but make sure they match the ones in agent.py!
     FINE_RATE = 50.0
     CURRENCY = "PKR"
     today = datetime.now().date()
@@ -73,6 +73,10 @@ else:
     with col1:
         st.write("**1. Upload Data to Database**")
         uploaded_file = st.file_uploader("Upload Excel/CSV to save in Supabase", type=["csv", "xlsx"])
+        
+        # The new checkbox for overwriting
+        overwrite = st.checkbox("⚠️ Delete ALL old data before uploading (Overwrite Database)")
+        
         if st.button("Upload to Supabase"):
             if uploaded_file:
                 try:
@@ -87,7 +91,12 @@ else:
                     
                     records = df.to_dict(orient='records')
                     
-                    # UPSERT: Updates existing rows or inserts new ones
+                    # If overwrite is checked, wipe the table first
+                    if overwrite:
+                        supabase.table('library_loans').delete().gt('id', 0).execute()
+                        st.info("Old database cleared.")
+                        
+                    # Then upload the new data
                     supabase.table('library_loans').upsert(
                         records, 
                         on_conflict="email,book_title,due_date"
