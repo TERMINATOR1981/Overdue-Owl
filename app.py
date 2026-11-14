@@ -38,10 +38,8 @@ if st.session_state.show_help:
     st.subheader("1. Upload Data")
     st.write("Prepare an Excel or CSV file with exactly these 4 headers: `name`, `email`, `book_title`, `due_date`. (Format for date: `YYYY-MM-DD`). Upload it and click **Upload to Supabase**.")
     
-    st.info("**Overwriting vs Updating:** If you check the **⚠️ Delete ALL old data** box, it will wipe the database clean before adding your new file. If you leave it unchecked, it will just add new books and update existing ones.")
-    
-    st.subheader("2. Returned Books")
-    st.write("When a student returns a book, simply go into your **Supabase Dashboard**, find their row, and check the **`returned`** box. The system will automatically stop emailing them and remove them from the fine list.")
+    st.subheader("2. Mark as Returned")
+    st.write("When a student returns a book, scroll down to the **Mark Books as Returned** section, check the box next to their name, and click **Update Database**. The system will instantly stop emailing them.")
     
     st.subheader("3. Trigger the Bot")
     st.write("Click **🚀 Force Run Agent Now**. This tells GitHub to instantly wake up, read your database, email the borrowers, and send you the summary email.")
@@ -74,9 +72,6 @@ else:
         st.write("**1. Upload Data to Database**")
         uploaded_file = st.file_uploader("Upload Excel/CSV to save in Supabase", type=["csv", "xlsx"])
         
-        # The new checkbox for overwriting
-        overwrite = st.checkbox("⚠️ Delete ALL old data before uploading (Overwrite Database)")
-        
         if st.button("Upload to Supabase"):
             if uploaded_file:
                 try:
@@ -91,12 +86,7 @@ else:
                     
                     records = df.to_dict(orient='records')
                     
-                    # If overwrite is checked, wipe the table first
-                    if overwrite:
-                        supabase.table('library_loans').delete().gt('id', 0).execute()
-                        st.info("Old database cleared.")
-                        
-                    # Then upload the new data
+                    # Upload the new data (upsert handles duplicates)
                     supabase.table('library_loans').upsert(
                         records, 
                         on_conflict="email,book_title,due_date"
@@ -167,11 +157,36 @@ else:
             else:
                 st.info("No overdue books right now (or all books are returned!).")
                 
-            # Show raw database in an expander
-            with st.expander("View Raw Database (All Unreturned Books)"):
-                st.dataframe(df, use_container_width=True)
-                
         else:
             st.info("The database is currently empty.")
+
+        # --- MARK AS RETURNED SECTION ---
+        st.divider()
+        st.subheader("✅ Mark Books as Returned")
+        st.write("Check the box next to a student's name to mark their book as returned. This will stop all future emails and remove their fine.")
+        
+        with st.form("returned_form"):
+            returned_ids = []
+            for index, row in df.iterrows():
+                # Create a checkbox for each row
+                checked = st.checkbox(
+                    f"{row['name']} - {row['book_title']} (Due: {row['due_date']})", 
+                    key=f"chk_{row['id']}"
+                )
+                if checked:
+                    returned_ids.append(row['id'])
+            
+            # Form submit button
+            submit_returned = st.form_submit_button("Update Database")
+            
+            if submit_returned:
+                if returned_ids:
+                    # Update all checked IDs to returned = True
+                    supabase.table('library_loans').update({"returned": True}).in_("id", returned_ids).execute()
+                    st.success(f"Successfully marked {len(returned_ids)} book(s) as returned!")
+                    st.rerun()
+                else:
+                    st.warning("No boxes were checked.")
+
     except Exception as e:
         st.error(f"Could not fetch database: {e}")
